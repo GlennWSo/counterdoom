@@ -48,6 +48,9 @@
           wayland-protocols
           zlib
           alsa-lib.dev
+          udev.dev
+          udev
+          alsa-lib
         ]);
 
         commonRust = {
@@ -60,6 +63,8 @@
             xorg.libX11.dev
             xorg.libXcursor.dev
             xorg.libXi.dev
+            udev
+
             clang
             lld
           ];
