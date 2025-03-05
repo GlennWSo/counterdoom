@@ -60,6 +60,8 @@
             xorg.libX11.dev
             xorg.libXcursor.dev
             xorg.libXi.dev
+            clang
+            lld
           ];
           nativeBuildInputs = with pkgs; [
             # Add extra native build inputs here, etc.
