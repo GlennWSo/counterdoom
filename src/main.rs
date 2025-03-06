@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::f32;
 
 use bevy::color::palettes::tailwind;
@@ -24,7 +25,7 @@ fn main() {
     App::new()
         .add_plugins(default_plugins)
         .add_systems(Startup, setup_level)
-        .add_systems(Update, move_bird)
+        .add_systems(Update, (move_bird, check_collisions))
         .run();
 }
 
@@ -43,8 +44,9 @@ struct PipeMan {
 }
 
 impl PipeMan {
-    const PIPE_HIEGHT: f32 = 144.0;
-    const PIPE_WIDTH: f32 = 18.0;
+    const PIXEL_X: f32 = 18.0;
+    const PIXEL_Y: f32 = 144.0;
+    const WORLD_Y: f32 = PipeMan::PIXEL_Y * PIXEL_RATIO;
 }
 
 const SCROLL_SPEED: f32 = 10.0;
@@ -59,12 +61,10 @@ impl Bird {
 const PIXEL_RATIO: f32 = 4.0;
 
 #[derive(Component)]
-struct Obsticle {
-    gap: f32,
-}
+struct Obsticle;
 
 fn spawn_obsticle(pos: Vec2, gap: f32, cmds: &mut Commands, image: Handle<Image>) {
-    let y = -PipeMan::PIPE_HIEGHT / 2.0 * PIXEL_RATIO + pos.y - gap / 2.0;
+    let y = -PipeMan::PIXEL_Y / 2.0 * PIXEL_RATIO + pos.y - gap / 2.0;
 
     let translation = Vec3 {
         x: 0.0 + pos.x,
@@ -81,9 +81,25 @@ fn spawn_obsticle(pos: Vec2, gap: f32, cmds: &mut Commands, image: Handle<Image>
         image,
         ..Default::default()
     });
-    let bundle1 = (Obsticle { gap }, sprite.clone(), transform);
-    let bundle2 = (Obsticle { gap }, sprite, transform2);
+    let bundle1 = (Obsticle, sprite.clone(), transform);
+    let bundle2 = (Obsticle, sprite, transform2);
     cmds.spawn_batch([bundle1, bundle2]);
+}
+
+fn check_collisions(
+    playerq: Query<&Transform, With<Player>>,
+    obsticles: Query<(Entity, &Transform), With<Obsticle>>,
+) {
+    let player = playerq.single();
+    for (ent, obs) in obsticles.iter() {
+        let vec3 = Vec3 {
+            y: PipeMan::WORLD_Y / 2.0,
+            ..default()
+        };
+        // let vec3 = Vec3::ZERO;
+        let diff = obs.rotation * (player.translation - obs.translation) - vec3;
+        dbg!(ent, &diff);
+    }
 }
 
 fn setup_level(winq: Query<&Window>, mut cmds: Commands, asset_server: Res<AssetServer>) {
@@ -100,7 +116,7 @@ fn setup_level(winq: Query<&Window>, mut cmds: Commands, asset_server: Res<Asset
     let gap = Bird::SIZE_Y * 2.0;
     spawn_obsticle(Vec2::ZERO, gap, &mut cmds, pipe_image);
 
-    let mut transform = Transform::IDENTITY.with_scale(Vec3::splat(PIXEL_RATIO));
+    let transform = Transform::IDENTITY.with_scale(Vec3::splat(PIXEL_RATIO));
     // transform.translation.y = Bird::BIRD_PX_Y / 2;
 
     let player_bundle = (
