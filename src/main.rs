@@ -1,11 +1,16 @@
-use std::any::Any;
-use std::f32;
+use std::f32::consts::PI;
 
 use bevy::color::palettes::tailwind;
 use bevy::math::ops::atan2;
 use bevy::prelude::*;
-use bevy::utils::tracing::instrument::WithSubscriber;
 use bevy::window::WindowResolution;
+
+#[derive(States, Debug, Hash, PartialEq, Eq, Clone, Default)]
+enum GameState {
+    #[default]
+    Playing,
+    GameOver,
+}
 
 fn main() {
     let primary_window = Some(Window {
@@ -25,7 +30,11 @@ fn main() {
     App::new()
         .add_plugins(default_plugins)
         .add_systems(Startup, setup_level)
-        .add_systems(Update, (move_bird, check_collisions))
+        .init_state::<GameState>()
+        .add_systems(
+            Update,
+            (move_bird, check_collisions, side_scroll).run_if(in_state(GameState::Playing)),
+        )
         .run();
 }
 
@@ -49,13 +58,15 @@ impl PipeMan {
     const WORLD_Y: f32 = PipeMan::PIXEL_Y * PIXEL_RATIO;
 }
 
-const SCROLL_SPEED: f32 = 10.0;
+const SCROLL_SPEED: f32 = 100.0;
 
 impl Bird {
-    const GRAVITY: f32 = -0.0;
+    const GRAVITY: f32 = -1.0;
     const FLAP_DV: f32 = 1.0;
     const SIZE_PIXEL_Y: f32 = 8.0;
     const SIZE_Y: f32 = Bird::SIZE_PIXEL_Y * PIXEL_RATIO;
+    const SIZE_PIXEL_X: f32 = 12.0;
+    const SIZE_X: f32 = Bird::SIZE_PIXEL_X * PIXEL_RATIO;
 }
 
 const PIXEL_RATIO: f32 = 4.0;
@@ -74,7 +85,9 @@ fn spawn_obsticle(pos: Vec2, gap: f32, cmds: &mut Commands, image: Handle<Image>
     let transform = Transform::from_translation(translation).with_scale(Vec3::splat(PIXEL_RATIO));
 
     let mut transform2 = transform.clone();
-    transform2.rotate_around(Vec3::ZERO, Quat::from_rotation_z(std::f32::consts::PI));
+    // transform2.rotate_around(Vec3::ZERO, Quat::from_rotation_z(std::f32::consts::PI));
+    transform2.rotate_z(PI);
+    transform2.translation.y *= -1.0;
     transform2.scale.x *= -1.0;
 
     let sprite = dbg!(Sprite {
@@ -86,9 +99,18 @@ fn spawn_obsticle(pos: Vec2, gap: f32, cmds: &mut Commands, image: Handle<Image>
     cmds.spawn_batch([bundle1, bundle2]);
 }
 
+fn side_scroll(mut obsticles: Query<&mut Transform, With<Obsticle>>, time: Res<Time>) {
+    let dt = time.delta_secs();
+    for mut obs in obsticles.iter_mut() {
+        obs.translation.x -= SCROLL_SPEED * dt;
+    }
+}
+
 fn check_collisions(
     playerq: Query<&Transform, With<Player>>,
     obsticles: Query<(Entity, &Transform), With<Obsticle>>,
+    state: Res<State<GameState>>,
+    mut next_state: ResMut<NextState<GameState>>,
 ) {
     let player = playerq.single();
     for (ent, obs) in obsticles.iter() {
@@ -98,7 +120,21 @@ fn check_collisions(
         };
         // let vec3 = Vec3::ZERO;
         let diff = obs.rotation * (player.translation - obs.translation) - vec3;
+
+        let in_x = (diff.x.abs() - Bird::SIZE_X) < 0.0;
+        let in_y = (diff.y - Bird::SIZE_Y / 2.0) < 0.0;
         dbg!(ent, &diff);
+        if in_x && in_y {
+            dbg!("collide!");
+            match state.get() {
+                GameState::Playing => {
+                    next_state.set(GameState::GameOver);
+                }
+                GameState::GameOver => {
+                    panic!("derp")
+                }
+            }
+        }
     }
 }
 
@@ -113,8 +149,8 @@ fn setup_level(winq: Query<&Window>, mut cmds: Commands, asset_server: Res<Asset
     };
     cmds.insert_resource(resource);
 
-    let gap = Bird::SIZE_Y * 2.0;
-    spawn_obsticle(Vec2::ZERO, gap, &mut cmds, pipe_image);
+    let gap = Bird::SIZE_Y * 3.0;
+    spawn_obsticle(Vec2::new(200.0, 0.0), gap, &mut cmds, pipe_image);
 
     let transform = Transform::IDENTITY.with_scale(Vec3::splat(PIXEL_RATIO));
     // transform.translation.y = Bird::BIRD_PX_Y / 2;
@@ -151,7 +187,7 @@ fn move_bird(
 
     bird.velocity += dt * Bird::GRAVITY;
     transform.translation.y += bird.velocity;
-    let angle = atan2(bird.velocity * 2.0, SCROLL_SPEED);
+    let angle = atan2(bird.velocity * 10.0, SCROLL_SPEED);
     transform.rotation = Quat::from_axis_angle(Vec3::Z, angle)
     // transform.translation.x += 0 * dt;
 }
