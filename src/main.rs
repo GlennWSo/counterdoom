@@ -84,7 +84,7 @@ fn spawn_obsticle(pos: Vec2, gap: f32, cmds: &mut Commands, image: Handle<Image>
     };
     let transform = Transform::from_translation(translation).with_scale(Vec3::splat(PIXEL_RATIO));
 
-    let mut transform2 = transform.clone();
+    let mut transform2 = transform;
     // transform2.rotate_around(Vec3::ZERO, Quat::from_rotation_z(std::f32::consts::PI));
     transform2.rotate_z(PI);
     transform2.translation.y *= -1.0;
@@ -140,7 +140,7 @@ fn check_collisions(
 
 fn setup_level(winq: Query<&Window>, mut cmds: Commands, asset_server: Res<AssetServer>) {
     cmds.insert_resource(ClearColor(Color::from(tailwind::TEAL_400)));
-    cmds.spawn(Camera2d::default());
+    cmds.spawn(Camera2d);
 
     let pipe_image: Handle<Image> = asset_server.load("pipe.png");
     let resource = PipeMan {
