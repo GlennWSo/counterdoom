@@ -1648,6 +1648,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "counter-doom"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "rand 0.9.0",
+]
+
+[[package]]
 name = "cpal"
 version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1718,14 +1726,6 @@ name = "crunchy"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "43da5946c66ffcc7745f48db692ffbb10a83bfe0afd96235c5c2a4fb23994929"
-
-[[package]]
-name = "csdoom"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "rand 0.9.0",
-]
 
 [[package]]
 name = "ctrlc"
