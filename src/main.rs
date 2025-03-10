@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use std::fmt;
 
 use bevy::math::ops::atan2;
 use bevy::prelude::*;
@@ -35,12 +36,16 @@ fn main() {
         .add_plugins(default_plugins)
         .add_systems(Startup, setup_game)
         .init_state::<GameState>()
+        .add_event::<TryTool>()
         .add_systems(
             Update,
             (
                 move_player,
                 player_use_kit,
                 player_change_kit, // derp
+                // debug_tool_use,
+                use_tool::<FireBlastSpell>,
+                cooldown_system::<FireBlastSpell>,
             )
                 .run_if(in_state(GameState::Playing)),
         )
@@ -55,12 +60,81 @@ const PIXEL_RATIO: f32 = 4.0;
 #[derive(Component)]
 struct Player;
 
-#[derive(Component)]
+#[derive(Component, Default, Debug)]
 struct Hero;
+
+#[derive(Component, Default, Debug, PartialEq, PartialOrd)]
+struct Vitals {
+    mana: u8,
+    life: f32,
+    stamina: f32,
+}
+
+trait Ability {
+    fn preform(&mut self, cmds: &mut Commands);
+    fn cost(&self) -> Vitals {
+        Vitals::default()
+    }
+    fn ready(&self) -> bool {
+        true
+    }
+}
+
+trait Cooldown {
+    fn cooldown(&mut self, dt: f32);
+    fn ready(&self) -> bool;
+}
+
+// #[derive(Component, Default, Debug, Deref, DerefMut, PartialEq, PartialOrd)]
+// struct Life(f32);
+// #[derive(Component, Default, Debug, Deref, DerefMut, PartialEq, PartialOrd)]
+// struct Stamina(f32);
+// #[derive(Component, Default, Debug, Deref, DerefMut, PartialEq, Eq, PartialOrd, Ord)]
+// struct Mana(u32);
 
 #[derive(Component)]
 struct Walk {
     speed: f32,
+}
+
+#[derive(Component, Default, Debug)]
+struct Cost {
+    vitals: Vitals,
+}
+
+impl Vitals {
+    fn with_mana(mut self, mana: u8) -> Self {
+        self.mana = mana;
+        self
+    }
+    fn with_life(mut self, life: f32) -> Self {
+        self.life = life;
+        self
+    }
+    fn with_stamina(mut self, stamina: f32) -> Self {
+        self.stamina = stamina;
+        self
+    }
+}
+impl Cost {
+    fn with_mana(mut self, mana: u8) -> Self {
+        self.vitals.mana = mana;
+        self
+    }
+    fn with_life(mut self, life: f32) -> Self {
+        self.vitals.life = life;
+        self
+    }
+    fn with_stamina(mut self, stamina: f32) -> Self {
+        self.vitals.stamina = stamina;
+        self
+    }
+}
+
+#[derive(Event)]
+struct TryTool {
+    tool: Entity,
+    user: Entity,
 }
 
 impl Walk {
@@ -100,8 +174,53 @@ impl ToolKit {
     }
 }
 
-#[derive(Component)]
-struct FireBlaster;
+#[derive(Component, Default, Debug)]
+struct FireBlastSpell {
+    cooldown: f32,
+}
+
+// #[derive(Component, Debug, Deref, DerefMut)]
+// struct Cooldown(f32);
+
+impl FireBlastSpell {
+    const COOLDOWN: f32 = 1.0;
+}
+
+impl Ability for FireBlastSpell {
+    fn preform(&mut self, cmds: &mut Commands) {
+        println!("Pew");
+        self.cooldown = FireBlastSpell::COOLDOWN;
+    }
+
+    fn ready(&self) -> bool {
+        self.cooldown <= 0.0
+    }
+
+    fn cost(&self) -> Vitals {
+        Vitals::default()
+    }
+}
+
+impl Cooldown for FireBlastSpell {
+    fn cooldown(&mut self, dt: f32) {
+        dbg!(self.cooldown);
+        self.cooldown -= dt;
+    }
+
+    fn ready(&self) -> bool {
+        Ability::ready(self)
+    }
+}
+
+fn cooldown_system<T: Cooldown + Component>(mut q: Query<&mut T>, time: Res<Time>) {
+    let dt = time.delta_secs();
+    for mut cooler in q.iter_mut() {
+        if cooler.ready() {
+            continue;
+        }
+        cooler.cooldown(dt);
+    }
+}
 
 fn player_change_kit(
     mut playerq: Query<&mut ToolKit, With<Player>>,
@@ -111,7 +230,7 @@ fn player_change_kit(
         return;
     };
 
-    for key in keys.get_pressed() {
+    for key in keys.get_just_pressed() {
         match key {
             KeyCode::Digit1 => kit.active = 0,
             KeyCode::Digit2 => kit.active = 1,
@@ -127,19 +246,51 @@ fn player_change_kit(
     }
 }
 
-fn player_use_kit(playerq: Query<&ToolKit, With<Player>>, keys: Res<ButtonInput<KeyCode>>) {
-    let Ok(kit) = playerq.get_single() else {
+fn use_tool<T: Ability + Component + fmt::Debug>(
+    mut cmds: Commands,
+    mut tool_uses: EventReader<TryTool>,
+    mut q_ability: Query<&mut T>,
+    user_q: Query<&Vitals>,
+) {
+    for TryTool { user, tool } in tool_uses.read() {
+        let Ok(mut ability) = q_ability.get_mut(*tool) else {
+            continue;
+        };
+        println!("cost is {:#?}", ability.cost()); //dbg
+
+        let Ok(vitals) = user_q.get(*user) else {
+            continue;
+        };
+        println!("user has {vitals:#?}");
+        if !(vitals >= &ability.cost()) {
+            println!("not enough vitals");
+            continue;
+        }
+        if !ability.ready() {
+            println!("ability not ready");
+            continue;
+        }
+        ability.preform(&mut cmds);
+    }
+}
+
+fn player_use_kit(
+    playerq: Query<(Entity, &ToolKit), With<Player>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mut try_tool: EventWriter<TryTool>,
+) {
+    let Ok((user, kit)) = playerq.get_single() else {
         return;
     };
-
-    let Some(thing) = kit.get_active() else {
-        return;
-    };
-
-    if keys.pressed(KeyCode::Space) {
-        // dbg!("try using", thing);
+    if !keys.just_pressed(KeyCode::Space) {
         return;
     }
+
+    let Some(thing) = kit.get_active() else {
+        println!("nothing is equiped"); // dbg
+        return;
+    };
+    try_tool.send(TryTool { tool: thing, user });
 }
 
 fn move_player(
@@ -181,7 +332,12 @@ fn setup_level(
         ..Default::default()
     };
 
-    let fire_blaster = cmds.spawn(FireBlaster).id();
+    let fire_blaster = cmds
+        .spawn((
+            FireBlastSpell::default(),
+            Cost::default().with_stamina(10.0),
+        ))
+        .id();
 
     let toolkit = ToolKit::new(vec![fire_blaster]);
 
@@ -189,6 +345,11 @@ fn setup_level(
         hero_sprite,
         toolkit,
         Hero,
+        Vitals {
+            mana: 3,
+            life: 100.0,
+            stamina: 100.0,
+        },
         Walk::new(100.0),
         Player,
         Transform::IDENTITY.with_scale(Vec3::splat(PIXEL_RATIO)),
