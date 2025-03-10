@@ -44,6 +44,7 @@ fn main() {
                 move_player,
                 player_use_kit,
                 player_change_kit, // derp
+                move_fire_bolt,
                 // debug_tool_use,
                 use_tool::<FireBlastSpell>,
                 cooldown_system::<FireBlastSpell>,
@@ -208,6 +209,14 @@ struct FireBolt {
     velocity: f32,
     /// the destrucive capability
     power: f32,
+}
+
+fn move_fire_bolt(mut fireq: Query<(&mut Transform, &FireBolt)>, time: Res<Time>) {
+    let dt = time.delta_secs();
+    for (mut transform, bolt) in fireq.iter_mut() {
+        let delta = transform.local_x() * dt * bolt.velocity;
+        transform.translation += delta;
+    }
 }
 
 // #[derive(Component, Debug, Deref, DerefMut)]
