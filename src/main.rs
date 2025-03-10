@@ -1,5 +1,6 @@
 use std::f32::consts::PI;
 use std::fmt;
+use std::ops::{DerefMut, Sub, SubAssign};
 
 use bevy::math::ops::atan2;
 use bevy::prelude::*;
@@ -70,8 +71,31 @@ struct Vitals {
     stamina: f32,
 }
 
-trait Ability {
-    fn preform(&mut self, cmds: &mut Commands);
+impl Sub for Vitals {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Vitals {
+            mana: self.mana - rhs.mana,
+            life: self.life - rhs.life,
+            stamina: self.stamina - rhs.stamina,
+        }
+    }
+}
+
+impl SubAssign<&Self> for Vitals {
+    fn sub_assign(&mut self, rhs: &Vitals) {
+        self.mana -= rhs.mana;
+        self.life -= rhs.life;
+        self.stamina -= rhs.stamina;
+    }
+}
+
+/// Things like fireball skill
+/// or sword attack etc
+/// Doge roll?
+trait CombatSkill {
+    fn preform(&mut self, cmds: &mut Commands, origin: &Transform, asset_server: &Res<AssetServer>);
     fn cost(&self) -> Vitals {
         Vitals::default()
     }
@@ -179,6 +203,13 @@ struct FireBlastSpell {
     cooldown: f32,
 }
 
+#[derive(Component, Default, Debug)]
+struct FireBolt {
+    velocity: f32,
+    /// the destrucive capability
+    power: f32,
+}
+
 // #[derive(Component, Debug, Deref, DerefMut)]
 // struct Cooldown(f32);
 
@@ -186,10 +217,36 @@ impl FireBlastSpell {
     const COOLDOWN: f32 = 1.0;
 }
 
-impl Ability for FireBlastSpell {
-    fn preform(&mut self, cmds: &mut Commands) {
-        println!("Pew");
+impl CombatSkill for FireBlastSpell {
+    fn preform(
+        &mut self,
+        cmds: &mut Commands,
+        origin: &Transform,
+        asset_server: &Res<AssetServer>,
+    ) {
+        println!("Fire blast at {:#?}", origin.translation);
         self.cooldown = FireBlastSpell::COOLDOWN;
+        let image = asset_server.load("bird.png");
+
+        let sprite = Sprite {
+            image,
+            color: Color::Srgba(Srgba {
+                red: 0.5,
+                green: 0.0,
+                blue: 0.0,
+                alpha: 0.5,
+            }),
+            ..Default::default()
+        };
+
+        cmds.spawn((
+            sprite,
+            origin.clone(),
+            FireBolt {
+                velocity: 1000.0,
+                power: 30.0,
+            },
+        ));
     }
 
     fn ready(&self) -> bool {
@@ -197,18 +254,17 @@ impl Ability for FireBlastSpell {
     }
 
     fn cost(&self) -> Vitals {
-        Vitals::default()
+        Vitals::default().with_stamina(10.0)
     }
 }
 
 impl Cooldown for FireBlastSpell {
     fn cooldown(&mut self, dt: f32) {
-        dbg!(self.cooldown);
         self.cooldown -= dt;
     }
 
     fn ready(&self) -> bool {
-        Ability::ready(self)
+        CombatSkill::ready(self)
     }
 }
 
@@ -246,23 +302,23 @@ fn player_change_kit(
     }
 }
 
-fn use_tool<T: Ability + Component + fmt::Debug>(
+fn use_tool<T: CombatSkill + Component + fmt::Debug>(
     mut cmds: Commands,
     mut tool_uses: EventReader<TryTool>,
     mut q_ability: Query<&mut T>,
-    user_q: Query<&Vitals>,
+    mut user_q: Query<(&mut Vitals, &Transform)>,
+    asset_server: Res<AssetServer>,
 ) {
     for TryTool { user, tool } in tool_uses.read() {
         let Ok(mut ability) = q_ability.get_mut(*tool) else {
             continue;
         };
-        println!("cost is {:#?}", ability.cost()); //dbg
 
-        let Ok(vitals) = user_q.get(*user) else {
+        let Ok((mut vitals, transform)) = user_q.get_mut(*user) else {
             continue;
         };
-        println!("user has {vitals:#?}");
-        if !(vitals >= &ability.cost()) {
+        let cost = ability.cost();
+        if !(vitals.as_ref() >= &cost) {
             println!("not enough vitals");
             continue;
         }
@@ -270,7 +326,10 @@ fn use_tool<T: Ability + Component + fmt::Debug>(
             println!("ability not ready");
             continue;
         }
-        ability.preform(&mut cmds);
+
+        *vitals -= &cost;
+        dbg!(vitals);
+        ability.preform(&mut cmds, transform, &asset_server);
     }
 }
 
