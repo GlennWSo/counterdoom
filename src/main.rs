@@ -250,16 +250,16 @@ impl CombatSkill for FireBlastSpell {
             image,
             color: Color::Srgba(Srgba {
                 red: 0.5,
-                green: 0.0,
-                blue: 0.0,
-                alpha: 0.5,
+                green: 0.1,
+                blue: 0.1,
+                alpha: 0.6,
             }),
             ..Default::default()
         };
 
         cmds.spawn((
             sprite,
-            origin.clone(),
+            origin.clone().with_scale(Vec3::splat(0.5 * PIXEL_RATIO)),
             RigidBody::Dynamic,
             Collider::circle(4.0),
             LinearVelocity(*velocity + (origin.local_x() * 30.0).truncate()),
@@ -428,7 +428,7 @@ fn setup_level(
         toolkit,
         Hero,
         RigidBody::Kinematic,
-        // Collider::circle(4.0),
+        Collider::circle(4.0),
         Vitals {
             mana: 3,
             life: 100.0,
