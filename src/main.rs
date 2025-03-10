@@ -2,6 +2,7 @@ use std::f32::consts::PI;
 use std::fmt;
 use std::ops::{DerefMut, Sub, SubAssign};
 
+use avian2d::prelude::*;
 use bevy::math::ops::atan2;
 use bevy::prelude::*;
 use bevy::window::WindowResolution;
@@ -34,7 +35,8 @@ fn main() {
         .set(ImagePlugin::default_nearest());
 
     App::new()
-        .add_plugins(default_plugins)
+        .add_plugins((default_plugins, PhysicsPlugins::default()))
+        .insert_resource(Gravity(Vec2::NEG_Y * 0.0))
         .add_systems(Startup, setup_game)
         .init_state::<GameState>()
         .add_event::<TryTool>()
@@ -44,7 +46,7 @@ fn main() {
                 move_player,
                 player_use_kit,
                 player_change_kit, // derp
-                move_fire_bolt,
+                // move_fire_bolt,
                 // debug_tool_use,
                 use_tool::<FireBlastSpell>,
                 cooldown_system::<FireBlastSpell>,
@@ -96,7 +98,13 @@ impl SubAssign<&Self> for Vitals {
 /// or sword attack etc
 /// Doge roll?
 trait CombatSkill {
-    fn preform(&mut self, cmds: &mut Commands, origin: &Transform, asset_server: &Res<AssetServer>);
+    fn preform(
+        &mut self,
+        cmds: &mut Commands,
+        origin: &Transform,
+        velocity: &Vec2,
+        asset_server: &Res<AssetServer>,
+    );
     fn cost(&self) -> Vitals {
         Vitals::default()
     }
@@ -204,7 +212,7 @@ struct FireBlastSpell {
     cooldown: f32,
 }
 
-#[derive(Component, Default, Debug)]
+#[derive(Component, Debug)]
 struct FireBolt {
     velocity: f32,
     /// the destrucive capability
@@ -231,6 +239,7 @@ impl CombatSkill for FireBlastSpell {
         &mut self,
         cmds: &mut Commands,
         origin: &Transform,
+        velocity: &Vec2,
         asset_server: &Res<AssetServer>,
     ) {
         println!("Fire blast at {:#?}", origin.translation);
@@ -251,6 +260,9 @@ impl CombatSkill for FireBlastSpell {
         cmds.spawn((
             sprite,
             origin.clone(),
+            RigidBody::Dynamic,
+            Collider::circle(4.0),
+            LinearVelocity(*velocity + (origin.local_x() * 30.0).truncate()),
             FireBolt {
                 velocity: 1000.0,
                 power: 30.0,
@@ -315,7 +327,7 @@ fn use_tool<T: CombatSkill + Component + fmt::Debug>(
     mut cmds: Commands,
     mut tool_uses: EventReader<TryTool>,
     mut q_ability: Query<&mut T>,
-    mut user_q: Query<(&mut Vitals, &Transform)>,
+    mut user_q: Query<(&mut Vitals, &Transform, &LinearVelocity)>,
     asset_server: Res<AssetServer>,
 ) {
     for TryTool { user, tool } in tool_uses.read() {
@@ -323,7 +335,7 @@ fn use_tool<T: CombatSkill + Component + fmt::Debug>(
             continue;
         };
 
-        let Ok((mut vitals, transform)) = user_q.get_mut(*user) else {
+        let Ok((mut vitals, transform, velocity)) = user_q.get_mut(*user) else {
             continue;
         };
         let cost = ability.cost();
@@ -338,7 +350,7 @@ fn use_tool<T: CombatSkill + Component + fmt::Debug>(
 
         *vitals -= &cost;
         dbg!(vitals);
-        ability.preform(&mut cmds, transform, &asset_server);
+        ability.preform(&mut cmds, transform, &velocity.0, &asset_server);
     }
 }
 
@@ -362,7 +374,7 @@ fn player_use_kit(
 }
 
 fn move_player(
-    mut playerq: Query<(&mut Transform, &Walk), With<Player>>,
+    mut playerq: Query<(&mut LinearVelocity, &Walk), With<Player>>,
     time: Res<Time>,
     keys: Res<ButtonInput<KeyCode>>,
 ) {
@@ -382,11 +394,13 @@ fn move_player(
         }
     }
     if direction == Vec2::ZERO {
+        transform.0 = direction;
         return;
     }
 
-    let dt = time.delta_secs();
-    transform.translation += (direction.normalize() * speed * dt).extend(0.0);
+    transform.0 = direction.normalize() * speed;
+    // let dt = time.delta_secs();
+    // transform.translation += (direction.normalize() * speed * dt).extend(0.0);
 }
 
 fn setup_level(
@@ -413,6 +427,8 @@ fn setup_level(
         hero_sprite,
         toolkit,
         Hero,
+        RigidBody::Kinematic,
+        // Collider::circle(4.0),
         Vitals {
             mana: 3,
             life: 100.0,
