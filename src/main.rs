@@ -1,6 +1,7 @@
+use std::cmp::Ordering;
 use std::f32::consts::PI;
 use std::fmt;
-use std::ops::{DerefMut, Sub, SubAssign};
+use std::ops::{Add, DerefMut, Sub, SubAssign};
 
 use avian2d::prelude::*;
 use bevy::math::ops::atan2;
@@ -67,21 +68,43 @@ struct Player;
 #[derive(Component, Default, Debug)]
 struct Hero;
 
-#[derive(Component, Default, Debug, PartialEq, PartialOrd)]
+#[derive(Component, Default, Debug, PartialEq, Clone, Copy)]
 struct Vitals {
     mana: u8,
     life: f32,
     stamina: f32,
 }
 
-impl Sub for Vitals {
+impl Vitals {
+    fn covers(&self, cost: &Vitals) -> bool {
+        let diff = *self - cost;
+        let mana = diff.mana >= 0;
+        let stamina = diff.stamina >= 0.0;
+        let life = diff.life >= 0.0;
+        life && stamina && mana
+    }
+}
+
+impl Sub<&Self> for Vitals {
     type Output = Self;
 
-    fn sub(self, rhs: Self) -> Self::Output {
+    fn sub(self, rhs: &Self) -> Self::Output {
         Vitals {
             mana: self.mana - rhs.mana,
             life: self.life - rhs.life,
             stamina: self.stamina - rhs.stamina,
+        }
+    }
+}
+
+impl Add for Vitals {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Vitals {
+            mana: self.mana + rhs.mana,
+            life: self.life + rhs.life,
+            stamina: self.stamina + rhs.stamina,
         }
     }
 }
@@ -339,7 +362,7 @@ fn use_tool<T: CombatSkill + Component + fmt::Debug>(
             continue;
         };
         let cost = ability.cost();
-        if !(vitals.as_ref() >= &cost) {
+        if !(vitals.covers(&cost)) {
             println!("not enough vitals");
             continue;
         }
